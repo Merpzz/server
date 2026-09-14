@@ -114,7 +114,7 @@ class ListCommand extends Base {
 			foreach ($mounts as $mount) {
 				$config = $mount->getBackendOptions();
 				foreach ($config as $key => $value) {
-					if (in_array($key, $hideKeys)) {
+					if (in_array($key, $hideKeys, true)) {
 						$mount->setBackendOption($key, '***REMOVED SENSITIVE VALUE***');
 					}
 				}
@@ -157,6 +157,7 @@ class ListCommand extends Base {
 				'previews' => true,
 				'filesystem_check_changes' => 1,
 				'enable_sharing' => false,
+				'enable_sync' => true,
 				'encoding_compatibility' => false,
 				'readonly' => false,
 			];

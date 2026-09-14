@@ -1,0 +1,55 @@
+name: Test build custom Docker image (sync-disabled feature branch)
+
+on:
+  push:
+    branches:
+      - feature/sync-disabled-external-storage
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Real runtime PHP deps live in the 3rdparty submodule, not in
+          # the root composer.json/vendor — must be fetched explicitly.
+          submodules: recursive
+
+      - name: Build image
+        run: docker build -t nextcloud-sync-test:ci .
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Tag and push to GHCR
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE=ghcr.io/$OWNER_LC/nextcloud-sync-test
+          docker tag nextcloud-sync-test:ci "$IMAGE:latest"
+          docker tag nextcloud-sync-test:ci "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+
+      - name: Smoke test — container starts and serves something on :80
+        run: |
+          docker run -d --name nextcloud-sync-test -p 8080:80 nextcloud-sync-test:ci
+          # Give it time to run first-install initialization
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:8080/status.php; then
+              echo "Container responded successfully"
+              exit 0
+            fi
+            echo "Waiting for container to become ready... ($i/30)"
+            sleep 10
+          done
+          echo "Container never became ready in time"
+          docker logs nextcloud-sync-test
+          exit 1
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker logs nextcloud-sync-test || true
